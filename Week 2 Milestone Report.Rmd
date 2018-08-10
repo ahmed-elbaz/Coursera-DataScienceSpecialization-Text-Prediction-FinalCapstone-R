@@ -1,0 +1,186 @@
+---
+title: "Data Science Capstone Milestone Report"
+author: "Ahmed Elbaz"
+date: "July 23, 2018"
+output: html_document
+---
+
+## Introduction
+
+This is the Milestone Report for the Coursera Data Science Capstone project. The overall goal of the capstone project is to create a predictive text model using a large text corpus of documents as training data. Natural language processing techniques will be used to perform the analysis and build the predictive model.
+
+This milestone report describes how to get and clean the data in addition to some exploratory data analysis and finally we will mention our suggested plans for creating the predictive model.
+
+## Getting the data
+
+In this part we will explain how to get the data and we will list the basic properties of the read data.
+
+### loading libraries
+
+The below packages will be used in our anlaysis
+
+```{r, echo=TRUE, message=FALSE}
+library(tm)
+library(stringi)
+library(SnowballC)
+library(RWeka)
+library(ggplot2)
+```
+
+### downloading and reading the data
+
+In this part we will download the data which has 3 data sources(news, blogs and twitter) in 4 different languages noting that our anlaysis will be based on English language only.
+
+
+```{r, cache=TRUE}
+#download the data
+setwd("E:/Data science/JHU Coursera/Course 10 Capstone")
+if (!file.exists("Coursera-SwiftKey.zip")) {
+    download.file( "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip",
+        "Coursera-SwiftKey.zip")
+    unzip("Coursera-SwiftKey.zip")
+}
+
+# Read blogs, news and twitter data
+blogs <- readLines("final/en_US/en_US.blogs.txt", skipNul = TRUE, encoding = "UTF-8")
+news <-  readLines("final/en_US/en_US.news.txt", skipNul = TRUE, warn = FALSE, encoding = "UTF-8")
+twitter <- readLines("final/en_US/en_US.twitter.txt", skipNul = TRUE, encoding = "UTF-8")
+```
+
+### Data summary
+
+You can find below a summary for the 3 files(size, number of lines, number of words per file, average number of words per file and finally maximum number of words in a sinlge line per file)
+
+```{r}
+# Get file sizes
+blogs.size <- file.info("final/en_US/en_US.blogs.txt")$size / (1024 * 1024)
+news.size <- file.info("final/en_US/en_US.news.txt")$size / (1024 * 1024)
+twitter.size <- file.info("final/en_US/en_US.twitter.txt")$size / (1024 * 1024)
+
+# Number of words in a file
+blogs.words <- stri_count_words(blogs)
+news.words <- stri_count_words(news)
+twitter.words <- stri_count_words(twitter)
+
+# Summary data frame
+SummaryDF <-
+    data.frame(
+        file.name = c("blogs", "news", "twitter"),
+        size.inMB = c(blogs.size, news.size, twitter.size),
+        lines.number = c(length(blogs), length(news), length(twitter)),
+        words.number = c(sum(blogs.words), sum(news.words), sum(twitter.words)),
+        Avg.words.number = c(mean(blogs.words), mean(news.words), mean(twitter.words)),   
+        Max.wordsPerLine = c(max(nchar(blogs)),max(nchar(news)),max(nchar(twitter)))
+    )
+
+SummaryDF
+```
+
+## Cleaning the data
+
+As we saw from the previuos summary the data is really huge and we don't need such amount of data to build our model so firstly we will sample 1% of the 3 files and we will use the sampled data in our analysis.
+
+```{r}
+set.seed(123)
+sampledData <- c(sample(blogs, length(blogs) * 0.01), sample(news, length(news) * 0.01),
+                 sample(twitter, length(twitter) * 0.01))
+```
+
+After that we will remove non-English characters, punctuation, numbers, white spaces. Also we will change all letters to small letters. Finally we will reomve stopwords which aren't necessary for our anlaysis in additon to removing profanity words using the google bad words database.
+
+```{r, cache=TRUE}
+# removing non-English characters
+sampledMod <- iconv(sampledData, "latin1", "ASCII", sub="")
+
+# creating and cleaning the corpus
+corpus <- VCorpus(VectorSource(sampledMod))
+corpus = tm_map(corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, stripWhitespace)
+
+# remove profanity using the google badwords database.
+
+profanityWords <- readLines("google_bad_words.txt", skipNul = TRUE)
+corpus <- tm_map(corpus, removeWords, profanityWords)
+```
+
+## Exploratory Data analysis
+
+After having a clean dataset we will convert it to N-gram format stored in Term Document Matrix format. we will create 3 matrices Unigram which is based on individual words, The bigram which is based on two words and finally Trigram which is based on 3 words.
+
+```{r, cache=TRUE}
+# Tokenaization
+UnigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 1, max = 1))
+BigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+TrigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+
+# convert to TDM format
+sparsedUnigram <- TermDocumentMatrix(corpus, control = list(tokenize = UnigramTokenizer))
+sparsedBigram <- TermDocumentMatrix(corpus, control = list(tokenize = BigramTokenizer))
+sparsedTrigram <- TermDocumentMatrix(corpus, control = list(tokenize = TrigramTokenizer))
+
+sparsedUnigram
+sparsedBigram
+sparsedTrigram
+```
+
+As you can see from the output of TDMs above sparsity is very high as it reaches 100% for all matrcies which means there are too much zero values in the matrix so we will remove sparsity by keeping 99.9% of the most frequent words and remove others.
+
+```{r}
+Unigrams <- removeSparseTerms(sparsedUnigram, 0.99)
+Bigrams <- removeSparseTerms(sparsedBigram, 0.9999)
+Trigrams <- removeSparseTerms(sparsedTrigram, 0.9999)
+```
+
+The below function sort by N-gram frequency then we will apply this function to the 3 matrices.
+
+```{r}
+frequencyFrame <- function(tdm){
+    freq <- sort(rowSums(as.matrix(tdm)), decreasing=TRUE)
+    frequencyFrame <- data.frame(word=names(freq), freq=freq)
+    return(frequencyFrame)
+}
+
+
+UnigramsSorted <- frequencyFrame(Unigrams)
+BigramsSorted <- frequencyFrame(Bigrams)
+TrigramsSorted <- frequencyFrame(Trigrams)
+```
+
+Now after getting the data frames we will visulaize the most frequent Unigram, Bigram and Trigram
+
+```{r}
+# Unigram plot
+
+g <- ggplot(data = UnigramsSorted[1:20,], aes(x = reorder(word,-freq), y= freq)) + geom_bar(stat="identity")
+g <- g + labs(x= "Unigram", y = "Frequency", title = "Top 20 frequent unigrams")
+g <- g + theme(axis.text.x=element_text(angle=90))
+g
+
+
+# Bigram plot
+
+g <- ggplot(data = BigramsSorted[1:20,], aes(x = reorder(word,-freq), y= freq)) + geom_bar(stat="identity")
+g <- g + labs(x= "Bigram", y = "Frequency", title = "Top 20 frequent Bigrams")
+g <- g + theme(axis.text.x=element_text(angle=90))
+g
+
+
+# Trigram plot
+
+g <- ggplot(data = TrigramsSorted[1:20,], aes(x = reorder(word,-freq), y= freq)) + geom_bar(stat="identity")
+g <- g + labs(x= "Trigram", y = "Frequency", title = "Top 20 frequent Trigrams")
+g <- g + theme(axis.text.x=element_text(angle=90))
+g
+```
+
+## Next steps
+
+We can summarize what are the next steps as below
+
+- One of the commands made during cleaning the data is removing stop words which I'm still not 100% sure whether I'll continue neglecting these stopwords in the final model or not. this point needs deep invesitgations and reading through the forum and internet.
+- After performing the above exploratory analysis we can say that we are now more familiar with N-gram which will be used in building our model. I think using Trigrams as a start will be the best and after that we can use Bigram If no matching Trigram can be found and finally we can use Unigram If there is no matched Bigram as well. 
+- Sometimes user input a word which isn't known by algorithm or in other words not in training set so I need to find a method to deal with this situation.
+

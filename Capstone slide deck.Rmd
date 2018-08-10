@@ -1,0 +1,39 @@
+---
+title: "Text Prediction Capstone"
+author: "Ahmed Elbaz"
+date: "August 10, 2018"
+output: ioslides_presentation
+---
+
+
+## Overview
+
+- In this presentation we will talk about Text Prediction application which is Similar to the most smart phone keyboards.
+- We used R and shiny package specifically to build this application.
+- The highest advantage of the application is its low response time as the predicted word appears in very few seconds.
+
+## Data processing
+
+- Only 5% of the original data was used from the three sources (blogs,twitter and news) because of local PC memory shortage.
+- Punctuation, numbers and strip spaces were removed and all-lower letters were used.
+- Unigrams, Bigrams, Trigrams and Quadgrams were created using Quanteda package.
+- Top N-grams were sorted from the most frequent to the lowest.
+- It should be noted that using higher order N-grams(5gram and 6gram) should provide better prediction and also using more data as traning data will also helps in getting better prediction but due to local PC limitation(4GB memory) this is the best result we can get
+
+## Prediction algorithm
+
+We used stupid backoff algorithm to make word prediction.
+![](PredictionAlgorithm.png)
+
+## How to use application
+
+A fast and simple app, just enter the text and predicted word will appear.
+![](TxtPredApp.png)
+
+
+## Links and sources
+
+- Start using the app from [here](https://elbaza286.shinyapps.io/DSCourseraCapstone/)
+
+- All used codes can be found in [github repository](https://github.com/ahmed-elbaz/Coursera-DS-Text-Prediction-Capstone)
+
